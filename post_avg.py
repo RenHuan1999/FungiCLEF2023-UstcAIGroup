@@ -9,7 +9,45 @@ print(os.listdir("/ossfs/workspace/datasets/fungi_tta"))
 root = "/ossfs/workspace/datasets/fungi_tta/"
 dirs = os.listdir(root)
 
-#############
+# average results from different model
+img_nums = 118676
+print(dirs)
+result_final = dict()
+result_final_count = dict()
+print(len(dirs))
+for d in dirs:
+    print(d)
+    results = []
+    result_dir = root + d
+    result_paths = glob.glob(result_dir + "/*.pkl")
+    for p in result_paths:
+        with open(p, "rb") as f:
+            results.append(pickle.load(f))
+    result = results[0]
+    for i in range(1, len(results)):
+        result.update(results[i])
+    del results
+    # to numpy
+    for k, v in result.items():
+        v = np.array(v)
+        if k not in result_final:
+            result_final[k] = v
+        else:
+            result_final[k] += v
+    del result
+    print(len(list(result_final.keys())))
+for k, v in result_final.items():
+    result_final[k] = v / len(dirs)
+
+submit_result = defaultdict(list)
+for k, v in result_final.items():
+    k = k.split("-")[1].split(".")[0]
+    submit_result[k].append(v.tolist())
+
+with open("/ossfs/workspace/datasets/" + "avg.pkl", "wb") as f:
+    pickle.dump(submit_result, f)
+
+# post process on ensamble results
 less_cls = [18, 21, 47, 110, 135, 248, 260, 393, 485, 500, 521, 530, 624, 656, 668, 690, 760, 825, 918, 1006, 1010, 1041, 1055, 1065, 1087, 1187, 1304, 1372, 1376, 1429, 1489, 1510, 1545, 1580, 1581, 1599, 1601]
 with open("/ossfs/workspace/datasets/" + "avg.pkl", "rb") as f:
     result_temp = pickle.load(f)

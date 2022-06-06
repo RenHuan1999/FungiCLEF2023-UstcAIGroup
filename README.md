@@ -25,3 +25,5 @@ After runing `test`, we will get result{0-rank}.pkl which indicate the output of
 |xiong (ours)|**0.80426**|
 |base|0.79759|
 |USTC-IAT- United|0.79059|
+
+**Our code are  based on [metaformer](https://github.com/dqshuai/MetaFormer)**
