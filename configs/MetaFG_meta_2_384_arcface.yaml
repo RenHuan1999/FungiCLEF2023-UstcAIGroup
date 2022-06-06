@@ -1,0 +1,10 @@
+DATA:
+  IMG_SIZE: 384
+  ADD_META: True
+TRAIN:
+  USE_ARCFACE: True
+MODEL:
+  TYPE: MetaFG
+  NAME: MetaFG_meta_2
+  EXTRA_TOKEN_NUM: 5
+  META_DIMS: [ 4, 34, 32, 31]

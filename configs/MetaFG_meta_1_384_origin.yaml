@@ -1,0 +1,17 @@
+DATA:
+  IMG_SIZE: 384
+  ADD_META: True
+MODEL:
+  TYPE: MetaFG
+  NAME: MetaFG_meta_1
+  EXTRA_TOKEN_NUM: 5
+  META_DIMS: [4, 34, 32, 31]
+  LABEL_SMOOTHING: 0.0
+#   META_DIMS: [4, 97]
+AUG:
+  MIXUP: 0.
+  CUTMIX: 0.
+# TRAIN:
+#   NEVER_MASK: True
+TEST:
+  FIVE_CROP: False

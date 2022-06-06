@@ -1,0 +1,23 @@
+DATA:
+  IMG_SIZE: 384
+  ADD_META: True
+MODEL:
+  TYPE: beit_vit_dyn
+  NAME: beit_large_patch16_384_dyn
+  EXTRA_TOKEN_NUM: 5
+  META_DIMS: [4, 34, 32, 31]
+  LABEL_SMOOTHING: 0.0
+#   META_DIMS: [4, 97]
+AUG:
+  MIXUP: 0.
+  CUTMIX: 0.
+dynamic_mlp:
+  mlp_cin: 101
+  mlp_d: 256
+  mlp_h: 64
+  mlp_n: 2
+  mlp_type: c
+# TRAIN:
+#   NEVER_MASK: True
+TEST:
+  FIVE_CROP: True
