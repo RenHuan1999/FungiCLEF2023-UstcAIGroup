@@ -2,15 +2,15 @@
 
 Huan Ren, Han Jiang, Wang Luo, Meng Meng, Tianzhu Zhang (USTC)
 
-![](./assets/framework.png)
+![](./figs/framework.png)
 
 ## Description
 
 This repository contains the code for the [FungiCLEF2023](https://www.imageclef.org/FungiCLEF2023) competition from UstcAIGroup. The majority of the code in this repository is sourced from [fgvc9_fungiclef](https://github.com/guoshengcv/fgvc9_fungiclef). The main differences lie in the `custom_loss.py` and `post_avg_entropy.py` files.
 
-* In the `custom_loss.py` file, we have implemented the `poisonous/edible classification loss` for enhanced identification of poisonous species. Additionally, we have included a uniform distribution constraint specifically for the novel category in the validation set.
+* In the `custom_loss.py` file, we have implemented the **poisonous/edible classification loss** for enhanced identification of poisonous species. Additionally, we have included a uniform distribution constraint specifically for the novel category in the validation set.
 
-* In the `post_avg_entropy.py` file, we have implemented the `Entropy-guided Unknown Identifier` to leverage entropy for distinguishing novel categories.
+* In the `post_avg_entropy.py` file, we have implemented the **Entropy-guided Unknown Identifier** to leverage entropy for distinguishing novel categories.
 
 ## Requirements
 
@@ -41,17 +41,17 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 # otherwise
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 ```
-If you face the error `No module named 'packaging'`, you may refer to [this issue](https://github.com/NVIDIA/apex/issues/1594), and we fix it by `conda install packaging` before.
+If you encounter the error `No module named 'packaging'`, you can refer to [this issue](https://github.com/NVIDIA/apex/issues/1594). One way to fix it is by running `conda install packaging` beforehand.
 
 ## Data Preparation
 
 1. Download the challenge image data (we use the full size version) and metadata from [competition website](https://www.imageclef.org/FungiCLEF2023).
 
-2. Download the [csv file](http://ptak.felk.cvut.cz/plants//DanishFungiDataset/poison_status_list.csv) indicating whether poisonous.
+2. Download the [CSV file](http://ptak.felk.cvut.cz/plants//DanishFungiDataset/poison_status_list.csv) indicating whether each category is poisonous.
 
-3. Download the pretrained model from [MetaFormer](https://github.com/dqshuai/MetaFormer).
+3. Download the pretrained model from the model zoo of [MetaFormer](https://github.com/dqshuai/MetaFormer).
 
-4. Place the datasets inside `datasets/fungi/challenge_data/` and pretrained model into `pretrained_model`. Make sure the data structure is as below.
+4. Place the datasets inside `datasets/fungi/challenge_data/` and pretrained model into `pretrained_model/`. Make sure the data structure is as below.
 
 ```
 ├── datasets
@@ -88,7 +88,7 @@ bash run_inference.sh
 
 ### Post process
 
-After running `inference`, you will get `result{0-rank}.pkl` which indicate the output of a single model. Here we give an example:
+After running inference, you will get `result{0-rank}.pkl` which indicate the output of a single model. Here we give an example:
 ```
 ├── fungi_pkl_ensemble
 │   ├── MetaFG_meta_0_384_bs36_epoch80_poison_trainval
@@ -103,7 +103,7 @@ After running `inference`, you will get `result{0-rank}.pkl` which indicate the 
 │   └── └── result3.pkl
 ```
 
-You can average ensemble the results and post process with our proposed `Entropy-guided Unknown Identifier`.
+You can average ensemble the results and post process with our proposed **Entropy-guided Unknown Identifier**:
 ```
 python post_avg_entropy.py
 ```
