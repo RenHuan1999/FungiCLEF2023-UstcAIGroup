@@ -481,7 +481,9 @@ def find_images_and_targets_fungi(root, istrain=False, aux_info=False):
         df = pd.concat([df, df_val])
     else:
         df = pd.read_csv(os.path.join(root,'val.csv'))
-    genus_names = sorted(list(set(df["genus"].tolist())))
+    # genus_names = sorted(list(set(df["genus"].tolist())))
+    df_train = pd.read_csv(os.path.join(root,'train.csv'))
+    genus_names = sorted(list(set(df_train["genus"].tolist())))
 
     images_and_targets = []
     class_to_idx = {}
@@ -490,7 +492,13 @@ def find_images_and_targets_fungi(root, istrain=False, aux_info=False):
         file_path = row["image_path"]
         file_path = os.path.join(root, "DF20", file_path)
         target = int(row["class_id"])
-        genus_target = int(genus_names.index(row["genus"]))
+        # if target > 1603 or target < 0:
+        #     continue
+        try:
+            genus_target = int(genus_names.index(row["genus"]))
+        except:
+            # continue
+            genus_target = -1
         if aux_info:
             temporal_info = encode_temporal_info(row["month"], row["day"])
             # spatial_info = encode_spatial_info(row["Latitude"], row["Longitude"])
@@ -506,39 +514,44 @@ def find_images_and_targets_fungi(root, istrain=False, aux_info=False):
             images_and_targets.append((file_path, target, genus_target))
     
     # add pesudo
-    df = pd.read_csv(os.path.join(root,'pesudo.csv'))
-    for idx, row in df.iterrows():
-        file_path = row["image_path"]
-        file_path = os.path.join(root, "DF21", file_path)
-        target = int(row["class_id"])
-        genus_target = 0
-        if aux_info:
-            temporal_info = encode_temporal_info(row["month"], row["day"])
-            # spatial_info = encode_spatial_info(row["Latitude"], row["Longitude"])
-            countryCode_onehot_info = encode_onehot(row["countryCode"], countryCode)
-            Substrate_onehot_info = encode_onehot(row["Substrate"], Substrate)
-            Habitat_onehot_info = encode_onehot(row["Habitat"], Habitat)
-            onehot_info = countryCode_onehot_info + Substrate_onehot_info + Habitat_onehot_info
+    # df = pd.read_csv(os.path.join(root,'pesudo.csv'))
+    # for idx, row in df.iterrows():
+    #     file_path = row["image_path"]
+    #     file_path = os.path.join(root, "DF21", file_path)
+    #     target = int(row["class_id"])
+    #     genus_target = 0
+    #     if aux_info:
+    #         temporal_info = encode_temporal_info(row["month"], row["day"])
+    #         # spatial_info = encode_spatial_info(row["Latitude"], row["Longitude"])
+    #         countryCode_onehot_info = encode_onehot(row["countryCode"], countryCode)
+    #         Substrate_onehot_info = encode_onehot(row["Substrate"], Substrate)
+    #         Habitat_onehot_info = encode_onehot(row["Habitat"], Habitat)
+    #         onehot_info = countryCode_onehot_info + Substrate_onehot_info + Habitat_onehot_info
             
-            # Substrate Habitat countryCode
-            images_and_targets.append((file_path, target, genus_target, temporal_info + onehot_info))
-            # images_and_targets.append((file_path, target, genus_target, temporal_info + spatial_info + onehot_info))
-        else:
-            images_and_targets.append((file_path, target, genus_target))
+    #         # Substrate Habitat countryCode
+    #         images_and_targets.append((file_path, target, genus_target, temporal_info + onehot_info))
+    #         # images_and_targets.append((file_path, target, genus_target, temporal_info + spatial_info + onehot_info))
+    #     else:
+    #         images_and_targets.append((file_path, target, genus_target))
 
     print(f"number of training samples {len(images_and_targets)}")
     return images_and_targets, class_to_idx, images_info
 
 
 def find_images_and_targets_fungi_test(root, istrain=False, aux_info=False):
+    # df = pd.read_csv(os.path.join(root,'val.csv'))
     df = pd.read_csv(os.path.join(root,'test.csv'))
     images_and_targets = []
     class_to_idx = {}
     images_info = []
     for idx, row in df.iterrows():
-        file_path = row["filename"]
+        file_path = row["image_path"]
         file_path = os.path.join(root, "DF21", file_path)
         target = 0 # fake target
+        # target = int(row["class_id"])
+        # if target == -1:
+            # target = 1605
+            # continue
         if aux_info:
             temporal_info = encode_temporal_info(row["month"], row["day"])
             # spatial_info = encode_spatial_info(row["Latitude"], row["Longitude"])
@@ -626,7 +639,15 @@ class DatasetMeta_v1(data.Dataset):
             path, target,aux_info = self.samples[index]
         else:
             path, target = self.samples[index]
-        img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
+        try:
+            img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
+        except:
+            try:
+                path = path.replace('DF20', 'DF21')
+                img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
+            except:
+                path = path.replace('DF21', 'DF20')
+                img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
         if self.transform is not None:
             img = self.transform(img)
         if self.aux_info:
@@ -693,7 +714,15 @@ class DatasetMeta(data.Dataset):
             path, target, genus_target, aux_info = self.samples[index]
         else:
             path, target = self.samples[index]
-        img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
+        try:
+            img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
+        except:
+            try:
+                path = path.replace('DF20', 'DF21')
+                img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
+            except:
+                path = path.replace('DF21', 'DF20')
+                img = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')
         if self.transform is not None:
             img = self.transform(img)
         if self.aux_info:

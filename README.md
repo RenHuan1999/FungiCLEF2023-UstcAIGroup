@@ -1,29 +1,137 @@
-# fgvc9_fungiclef
+# Entropy-guided Open-set Fine-grained Fungi Recognition
 
-## steps
+Huan Ren, Han Jiang, Wang Luo, Meng Meng, Tianzhu Zhang (USTC)
 
-**train**
+![](./assets/framework.png)
 
-```shell
-python3 -m torch.distributed.launch --nproc_per_node 4 --master_port 12345  main.py --cfg ./configs/MetaFG_meta_0_384.yaml --batch-size 64 --tag ${EXP_TAG} --lr 5e-5 --min-lr 5e-7 --warmup-lr 5e-8 --epochs 64 --warmup-epochs 1 --dataset fungi --pretrain ./pretrained_model/metafg_0_inat21_384.pth --accumulation-steps 4 --num-workers 16 --opts DATA.IMG_SIZE 384
+## Description
+
+This repository contains the code for the [FungiCLEF2023](https://www.imageclef.org/FungiCLEF2023) competition from UstcAIGroup. The majority of the code in this repository is sourced from [fgvc9_fungiclef](https://github.com/guoshengcv/fgvc9_fungiclef). The main differences lie in the `custom_loss.py` and `post_avg_entropy.py` files.
+
+* In the `custom_loss.py` file, we have implemented the `poisonous/edible classification loss` for enhanced identification of poisonous species. Additionally, we have included a uniform distribution constraint specifically for the novel category in the validation set.
+
+* In the `post_avg_entropy.py` file, we have implemented the `Entropy-guided Unknown Identifier` to leverage entropy for distinguishing novel categories.
+
+## Requirements
+
+You can get started by following these steps:
+
+1. Create a new conda environment and activate the new environment:
+```
+conda create -n MetaFormer python=3.8
+conda activate MetaFormer
 ```
 
-**test**
-
-```shell
-python3 -m torch.distributed.launch --nproc_per_node 4 --master_port 12344  main.py --eval --cfg ./configs/MetaFG_meta_0_384.yaml --dataset fungi_test --resume output/MetaFG_meta_0/${EXP_TAG}/latest.pth --batch-size 64 --tag ${EXP_TAG}_test --opts DATA.IMG_SIZE 384
+2. Install [PyTorch](https://pytorch.org/):
+```
+conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge
 ```
 
-**ensamble and post process**
+3. Install additional required packages using pip:
+```
+pip install -r requirements.txt
+```
 
-After runing `test`, we will get result{0-rank}.pkl which indicate the output of a single model, we can average ensamble the model outputs and do post process by runing `python post_avg.py`
+4. Install [Apex](https://github.com/NVIDIA/apex):
+```
+git clone https://github.com/NVIDIA/apex
+cd apex
+# if pip >= 23.1 (ref: https://pip.pypa.io/en/stable/news/#v23-1) which supports multiple `--config-settings` with the same key... 
+pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+# otherwise
+pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+```
+If you face the error `No module named 'packaging'`, you may refer to [this issue](https://github.com/NVIDIA/apex/issues/1594), and we fix it by `conda install packaging` before.
 
-## results
+## Data Preparation
 
-| team       | score   |
-| :--------: | :----------: |
-|xiong (ours)|**0.80426**|
-|base|0.79759|
-|USTC-IAT- United|0.79059|
+1. Download the challenge image data (we use the full size version) and metadata from [competition website](https://www.imageclef.org/FungiCLEF2023).
 
-**Our code are  based on [metaformer](https://github.com/dqshuai/MetaFormer)**
+2. Download the [csv file](http://ptak.felk.cvut.cz/plants//DanishFungiDataset/poison_status_list.csv) indicating whether poisonous.
+
+3. Download the pretrained model from [MetaFormer](https://github.com/dqshuai/MetaFormer).
+
+4. Place the datasets inside `datasets/fungi/challenge_data/` and pretrained model into `pretrained_model`. Make sure the data structure is as below.
+
+```
+├── datasets
+│   └── fungi
+│       └── challenge_data
+│           ├── DF20
+│           │   ├── 2237851949-74654.JPG
+│           │   └── 2237851951-222637.JPG
+│           ├── DF21
+│           ├── ├── 0-3008822340.JPG
+│           ├── └── 0-3008822343.JPG
+│           ├── poison_status_list.csv
+│           ├── test.csv
+│           ├── train.csv
+│           └── val.csv
+├── pretrained_model
+│   ├── metafg_0_inat21_384.pth
+│   └── metafg_2_inat21_384.pth
+```
+
+## Running
+
+### Training
+
+```
+bash run_train.sh
+```
+
+### Inference
+
+```
+bash run_inference.sh
+```
+
+### Post process
+
+After running `inference`, you will get `result{0-rank}.pkl` which indicate the output of a single model. Here we give an example:
+```
+├── fungi_pkl_ensemble
+│   ├── MetaFG_meta_0_384_bs36_epoch80_poison_trainval
+│   │   ├── result0.pkl
+│   │   ├── result1.pkl
+│   │   ├── result2.pkl
+│   │   └── result3.pkl
+│   ├── MetaFG_meta_2_384_bs18_epoch64_poison_trainval
+│   │   ├── result0.pkl
+│   │   ├── result1.pkl
+│   │   ├── result2.pkl
+│   └── └── result3.pkl
+```
+
+You can average ensemble the results and post process with our proposed `Entropy-guided Unknown Identifier`.
+```
+python post_avg_entropy.py
+```
+
+## Results
+
+### Public leaderboard of FungiCLEF2023 competition.
+
+| Rank  | Team Name   | F1 ($\uparrow$) | Track1 ($\downarrow$) | Track2 ($\downarrow$) | Track3 ($\downarrow$) | Track4 ($\downarrow$) |
+| ----- | ----------- | --------------- | --------------------- | --------------------- | --------------------- | --------------------- |
+| **1** | **meng18**  | **58.95** | **0.2072** | **0.1742** | **0.3814** | **1.4762** |
+| 2     | stefanwolf  | 56.27     | 0.3528     | 0.2133     | 0.5662     | 2.9296     |
+| 3     | word2vector | 55.46     | 0.3519     | 0.2561     | 0.6080     | 2.8167     |
+| 4     | SSSAMMMM    | 52.76     | 0.4124     | 0.3270     | 0.7395     | 3.3302     |
+
+### Private leaderboard of FungiCLEF2023 competition.
+
+| Rank  | Team Name   | F1 ($\uparrow$) | Track1 ($\downarrow$) | Track2 ($\downarrow$) | Track3 ($\downarrow$) | Track4 ($\downarrow$) |
+| ----- | ----------- | --------------- | --------------------- | --------------------- | --------------------- | --------------------- |
+| **1** | **meng18**  | **58.36** | **0.2409** | **0.1269** | **0.3702** | **1.7710** |
+| 2     | stefanwolf  | 55.31     | 0.3473     | 0.1904     | 0.5560     | 1.9045     |
+| 3     | word2vector | 54.34     | 0.3601     | 0.2324     | 0.6034     | 2.9269     |
+| 4     | SSSAMMMM    | 51.67     | 0.4408     | 0.3264     | 0.7673     | 3.6493     |
+
+## Acknowledgements
+
+We referenced the repos below for the code.
+
+* [fgvc9_fungiclef](https://github.com/guoshengcv/fgvc9_fungiclef)
+
+* [MetaFormer](https://github.com/dqshuai/MetaFormer)

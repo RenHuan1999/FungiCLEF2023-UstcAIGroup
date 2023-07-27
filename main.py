@@ -23,7 +23,7 @@ from lr_scheduler import build_scheduler
 from optimizer import build_optimizer
 from logger import create_logger
 from utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper, reduce_tensor, load_pretained
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 try:
     # noinspection PyUnresolvedReferences
     from apex import amp
@@ -150,7 +150,7 @@ def main(config):
         genus_criterion = LabelSmoothingCrossEntropy(smoothing=config.MODEL.LABEL_SMOOTHING)
     else:
 #         criterion = torch.nn.CrossEntropyLoss()
-        criterion = SeesawLoss().cuda()
+        criterion = SeesawLoss(num_classes=1604).cuda()
         genus_criterion = SeesawLoss(num_classes=566).cuda()
 #         genus_criterion = torch.nn.CrossEntropyLoss()
         print("------------use seesaw----------")
@@ -203,10 +203,11 @@ def main(config):
         return
 
     logger.info("Start training")
+    tb_logger = SummaryWriter(log_dir=os.path.join(config.OUTPUT, "logs"), comment='my_model')
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
         data_loader_train.sampler.set_epoch(epoch)      
-        train_one_epoch_local_data(config, model, criterion, genus_criterion, data_loader_train, optimizer, epoch, mixup_fn, lr_scheduler)
+        train_one_epoch_local_data(config, model, criterion, genus_criterion, data_loader_train, optimizer, epoch, mixup_fn, lr_scheduler, tb_logger)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, max_accuracy, optimizer, lr_scheduler, logger)
         
@@ -223,7 +224,7 @@ def main(config):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
-def train_one_epoch_local_data(config, model, criterion, genus_criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler,tb_logger=None):
+def train_one_epoch_local_data(config, model, criterion, genus_criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler, tb_logger=None):
     model.train()
     if hasattr(model.module,'cur_epoch'):
         model.module.cur_epoch = epoch
@@ -315,13 +316,17 @@ def train_one_epoch_local_data(config, model, criterion, genus_criterion, data_l
         batch_time.update(time.time() - end)
         end = time.time()
 
+        if tb_logger is not None:
+            tb_logger.add_scalar('Train/loss', loss.item(), epoch * len(data_loader) + idx)
+            tb_logger.add_scalar('Train/grad_norm', grad_norm, epoch * len(data_loader) + idx)
+
         if idx % config.PRINT_FREQ == 0:
             lr = optimizer.param_groups[0]['lr']
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             etas = batch_time.avg * (num_steps - idx)
             logger.info(
                 f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
-                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
+                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.7f}\t'
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
@@ -358,10 +363,11 @@ def validate(config, data_loader, model, mask_meta=False):
         target = target.cuda(non_blocking=True)
 
         # five crop
+        crop = images.shape[1]
         if config.TEST.FIVE_CROP:
             n, crop, c, h, w = images.shape
             images = images.reshape(-1, c, h, w)
-            meta = meta.unsqueeze(1).expand(-1, 10, -1).reshape(n * 10, -1)
+            meta = meta.unsqueeze(1).expand(-1, crop, -1).reshape(n * crop, -1)
 
         # compute output
         if config.DATA.ADD_META:
@@ -370,7 +376,7 @@ def validate(config, data_loader, model, mask_meta=False):
             output = model(images)
         # five crop
         if config.TEST.FIVE_CROP:
-            output = output.reshape(n, 10, -1)
+            output = output.reshape(n, crop, -1)
             output = torch.mean(output, 1)
 
         output_numpy = output.cpu().numpy().tolist()

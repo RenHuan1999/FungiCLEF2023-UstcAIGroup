@@ -1,0 +1,6 @@
+datasets/
+pretrained_model/
+apex/
+__pycache__
+output/
+fungi_pkl*/

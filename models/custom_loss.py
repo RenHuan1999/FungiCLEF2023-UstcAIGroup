@@ -3,6 +3,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import pandas as pd
+# poisonous_lvl = pd.read_csv(
+#     "http://ptak.felk.cvut.cz/plants//DanishFungiDataset/poison_status_list.csv"
+# )
+poisonous_lvl = pd.read_csv('datasets/fungi/challenge_data/poison_status_list.csv')
+POISONOUS_SPECIES = poisonous_lvl[poisonous_lvl["poisonous"] == 1].class_id.unique()
 
 def reduce_loss(loss, reduction):
     """Reduce loss as specified.
@@ -87,16 +93,16 @@ def seesaw_ce_loss(cls_score,
     onehot_labels = F.one_hot(labels, num_classes)
     seesaw_weights = cls_score.new_ones(onehot_labels.size())
 
-    # mitigation factor
+    # mitigation factor，各个类别的样本数量
     if p > 0:
         sample_ratio_matrix = cum_samples[None, :].clamp(
-            min=1) / cum_samples[:, None].clamp(min=1)
-        index = (sample_ratio_matrix < 1.0).float()
+            min=1) / cum_samples[:, None].clamp(min=1)      # sample_ratio_matrix[i][j]表示第i个类别的样本数占第j个类别的样本数的比例
+        index = (sample_ratio_matrix < 1.0).float()         # 小于1的元素设为1
         sample_weights = sample_ratio_matrix.pow(p) * index + (1 - index)
         mitigation_factor = sample_weights[labels.long(), :]
-        seesaw_weights = seesaw_weights * mitigation_factor
+        seesaw_weights = seesaw_weights * mitigation_factor # 第2个样本：[0.5, 1, 1, 1, 1]，第3个样本：[0.33, 0.67, 1, 1, 1]
 
-    # compensation factor
+    # compensation factor，当前类别的分数作为基准
     if q > 0:
         scores = F.softmax(cls_score.detach(), dim=1)
         self_scores = scores[
@@ -104,10 +110,10 @@ def seesaw_ce_loss(cls_score,
             labels.long()]
         score_matrix = scores / self_scores[:, None].clamp(min=eps)
         index = (score_matrix > 1.0).float()
-        compensation_factor = score_matrix.pow(q) * index + (1 - index)
+        compensation_factor = score_matrix.pow(q) * index + (1 - index)     # q=2，分数过高的类别设为1，分数过小的进一步抑制
         seesaw_weights = seesaw_weights * compensation_factor
 
-    cls_score = cls_score + (seesaw_weights.log() * (1 - onehot_labels))
+    cls_score = cls_score + (seesaw_weights.log() * (1 - onehot_labels))    # 少样本类别、分数过低的类别，加一个负数进一步抑制
 
     loss = F.cross_entropy(cls_score, labels, weight=None, reduction='none')
 
@@ -144,7 +150,7 @@ class SeesawLoss(nn.Module):
                  use_sigmoid=False,
                  p=0.8,
                  q=2.0,
-                 num_classes=1606,
+                 num_classes=1604,
                  eps=1e-2,
                  reduction='mean',
                  loss_weight=1.0,
@@ -200,6 +206,16 @@ class SeesawLoss(nn.Module):
         reduction = (
             reduction_override if reduction_override else self.reduction)
         assert cls_score.size(-1) == self.num_classes
+        pos_inds = torch.logical_and(labels < self.num_classes, labels >= 0)
+        nov_inds = labels == -1
+        if self.num_classes > 1000:
+            poison_species =  torch.from_numpy(POISONOUS_SPECIES).to(device=labels.device)
+            poison_inds = (labels.unsqueeze(1) == poison_species.unsqueeze(0)).sum(1) >= 1
+        else:
+            poison_inds = torch.tensor([0])
+        # poison_inds = [i for i, label in enumerate(labels) if label in POISONOUS_SPECIES]
+        # 0 for pos, 1 for neg
+        # obj_labels = (labels == self.num_classes).long()
 
         # accumulate the samples for each category
         unique_labels = labels.unique()
@@ -212,11 +228,44 @@ class SeesawLoss(nn.Module):
         else:
             label_weights = labels.new_ones(labels.size(), dtype=torch.float)
 
-        loss_cls_classes = self.loss_weight * self.cls_criterion(
-            cls_score, labels,
-            label_weights, self.cum_samples[:self.num_classes],
-            self.num_classes, self.p, self.q, self.eps, reduction,
-            avg_factor)
+        # calculate loss_cls_classes (only need pos samples)
+        if pos_inds.sum() > 0:
+            loss_cls_classes = self.loss_weight * self.cls_criterion(
+                cls_score[pos_inds], labels[pos_inds],
+                label_weights[pos_inds], self.cum_samples[:self.num_classes],
+                self.num_classes, self.p, self.q, self.eps, reduction,
+                avg_factor)
+        else:
+            loss_cls_classes = cls_score[pos_inds].sum()
+
+        if nov_inds.sum() > 0:
+            cls_score_nov = cls_score[nov_inds]
+            labels_nov = torch.ones_like(cls_score_nov) / cls_score_nov.shape[1]
+            loss_cls_classes_nov = - (labels_nov * F.log_softmax(cls_score_nov, dim=1)).sum(dim=-1)
+            loss_cls_classes_nov = self.loss_weight * loss_cls_classes_nov.mean()
+        else:
+            loss_cls_classes_nov = torch.tensor(0.)
+
+        # poisonous classification
+        if poison_inds.sum() > 0:
+            poison_mask = torch.zeros(cls_score.shape[-1], device=cls_score.device)
+            poison_mask[poison_species] = 1
+
+            cls_score_poison = cls_score[poison_inds][:, poison_mask == 1]
+            topk_scores, _ = torch.topk(cls_score_poison, k=5, dim=1)
+            cls_score_poison = topk_scores.mean(1)
+            cls_score_edible = cls_score[poison_inds][:, poison_mask != 1]
+            topk_scores, _ = torch.topk(cls_score_edible, k=5, dim=1)
+            cls_score_edible = topk_scores.mean(1)
+
+            cls_score_poi = torch.stack([cls_score_poison, cls_score_edible], dim=1)
+            loss_cls_classes_poison = - F.log_softmax(cls_score_poi, dim=1)[:, 0]
+            loss_cls_classes_poison = self.loss_weight * loss_cls_classes_poison.mean()
+        else:
+            loss_cls_classes_poison = torch.tensor(0.)
+
+        loss_cls_classes = (loss_cls_classes * pos_inds.sum() + loss_cls_classes_nov * nov_inds.sum() + loss_cls_classes_poison * poison_inds.sum()) \
+                           / (pos_inds.sum() + nov_inds.sum() + poison_inds.sum())
 
         if self.return_dict:
             loss_cls = dict()

@@ -128,11 +128,11 @@ def build_dataset(is_train, config):
     elif config.DATA.DATASET == 'fungi':
         root = './datasets/fungi/challenge_data'
         dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
-        nb_classes = 1606
+        nb_classes = 1604
     elif config.DATA.DATASET == 'fungi_test':
         root = './datasets/fungi/challenge_data'
         dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
-        nb_classes = 1606
+        nb_classes = 1604
     else:
         raise NotImplementedError("We only support ImageNet and inaturelist.")
 
